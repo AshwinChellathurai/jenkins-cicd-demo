@@ -15,7 +15,10 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t $IMAGE_NAME:$BUILD_NUMBER ."
+                sh """
+                    echo "Building Docker image: $IMAGE_NAME:$BUILD_NUMBER"
+                    docker build -t $IMAGE_NAME:$BUILD_NUMBER .
+                """
             }
         }
 
@@ -25,7 +28,9 @@ pipeline {
                                                   usernameVariable: 'DOCKER_USER',
                                                   passwordVariable: 'DOCKER_PASS')]) {
                     sh """
+                        echo "Logging in to Docker Hub"
                         echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                        echo "Pushing Docker image: $IMAGE_NAME:$BUILD_NUMBER"
                         docker push $IMAGE_NAME:\$BUILD_NUMBER
                     """
                 }
@@ -34,13 +39,15 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             environment {
-                // Use Minikube kubeconfig stored as Secret File in Jenkins
+                // Use standalone kubeconfig secret (with embedded certs)
                 KUBECONFIG = credentials('minikube-kubeconfig')
             }
             steps {
                 sh """
                     echo "Using kubeconfig at: \$KUBECONFIG"
+                    echo "Checking Kubernetes nodes..."
                     kubectl get nodes
+                    echo "Updating deployment image..."
                     kubectl set image deployment/nodejs-demo nodejs-demo=$IMAGE_NAME:$BUILD_NUMBER --record
                 """
             }
@@ -49,8 +56,7 @@ pipeline {
 
     post {
         always {
-            sh 'docker logout'
+            sh 'docker logout || true'
         }
     }
 }
-
